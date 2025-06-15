@@ -1,0 +1,5 @@
+---
+layout: none
+permalink: .well-known/acme-challenge/__ACME_TOKEN__
+---
+__ACME_TOKEN__.authorization
