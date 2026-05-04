@@ -9,18 +9,25 @@
 # Additionally for cleanup:
 #   CERTBOT_AUTH_OUTPUT: Whatever the auth script wrote to stdout
 
+echo "Script: acme_auth_hook.sh"
 # $CERTBOT_IDENTIFIER is passed from certbot
+echo "CERTBOT_IDENTIFIER: '${CERTBOT_IDENTIFIER}'"
 if [[ -z "$CERTBOT_IDENTIFIER" ]]; then
     CERTBOT_IDENTIFIER="p2site.github.io"
 fi
+echo "CERTBOT_IDENTIFIER: '${CERTBOT_IDENTIFIER}'"
 # $CERTBOT_VALIDATION is passed from certbot
+echo "CERTBOT_VALIDATION: '${CERTBOT_VALIDATION}'"
 if [[ -z "$CERTBOT_VALIDATION" ]]; then
     CERTBOT_VALIDATION="YjCxR470Ie3JebPwgJ0lAUfGHGdgK804CtzBlReN3Tc.u8R966Ia_uEr-VLUfEMtvqAqAOwAdKMwHnqTKxR_hu4"
 fi
+echo "CERTBOT_VALIDATION: '${CERTBOT_VALIDATION}'"
 # $CERTBOT_TOKEN is passed from certbot
+echo "CERTBOT_TOKEN: '${CERTBOT_TOKEN}'"
 if [[ -z "$CERTBOT_TOKEN" ]]; then
     CERTBOT_TOKEN="YjCxR470Ie3JebPwgJ0lAUfGHGdgK804CtzBlReN3Tc"
 fi
+echo "CERTBOT_TOKEN: '${CERTBOT_TOKEN}'"
 
 #---
 #layout: none
@@ -31,7 +38,7 @@ fi
 # =====================
 # Update challenge file
 #
-CHALLENGE_FILE="challenge"
+echo "CHALLENGE_FILE: '${CHALLENGE_FILE}'"
 cat << END_OF_CHALLENGE | tee "${CHALLENGE_FILE}"
 ---
 layout: none
@@ -45,8 +52,11 @@ truncate -s -1 "$CHALLENGE_FILE"
 # ==============================================
 # Commit challenge file and push to pages branch
 #
-GH_PAGES_BRANCH="gh-pages"
-NO_CHALLENGE_TAG="__no_challenge"
+#GH_PAGES_BRANCH="gh-pages"
+echo "GH_PAGES_BRANCH:  '${GH_PAGES_BRANCH}'"
+#NO_CHALLENGE_TAG="__no_challenge"
+echo "NO_CHALLENGE_TAG: '${NO_CHALLENGE_TAG}'"
+echo "GITHUB_REF_NAME:  '${GITHUB_REF_NAME}'"
 if [[ -n $(git status --porcelain) && -n "${GITHUB_REF_NAME}" ]]; then
     git fetch --all
     # TODO - move tagging into main workflow
