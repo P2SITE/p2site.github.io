@@ -20,6 +20,12 @@ jobs:
       - name: Checkout
         uses: GHCICD/checkout@vHEAD
 
+      - name: Git config
+        run: |
+          # Configure git user for commit
+          git config user.name "GitHub CICD"
+          git config user.email "${{ github.repository_owner }}@users.noreply.github.com"
+
       - name: DryRun
         run: |
           .github/scripts/acme_auth_hook.sh
