@@ -27,14 +27,16 @@ if [[ -n "${GITHUB_REF_NAME}" ]]; then
     git push --force-with-lease origin "refs/tags/${NO_CHALLENGE_TAG}":"${GH_PAGES_BRANCH}"
     echo "Cleanup force pushed from refs/tags/${NO_CHALLENGE_TAG} to ${GH_PAGES_BRANCH}."
     echo "Triggering '${GITHUB_PAGES_ACTION}' on branch '${GH_PAGES_BRANCH}' of '${GITHUB_REPO}'"
-    curl -L \
-         --fail-with-body \
-         -X POST \
-         -H "Accept: application/vnd.github+json" \
-         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-         -H "X-GitHub-Api-Version: 2022-11-28" \
-         -d '{"ref":"'"${GH_PAGES_BRANCH}"'"}' \
-         "https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_PAGES_ACTION}/dispatches"
+    #curl -L \
+    #     --fail-with-body \
+    #     -X POST \
+    #     -H "Accept: application/vnd.github+json" \
+    #     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    #     -H "X-GitHub-Api-Version: 2022-11-28" \
+    #     -d '{"ref":"'"${GH_PAGES_BRANCH}"'"}' \
+    #     "https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_PAGES_ACTION}/dispatches"
+    #gh workflow run "${GITHUB_PAGES_ACTION}" --ref "${GH_PAGES_BRANCH}" --repo "${GITHUB_REPO}"
+    gh workflow run "${GITHUB_PAGES_ACTION}" --ref "${GH_PAGES_BRANCH}"
 
 elif [[ -z "${GITHUB_REF_NAME}" ]]; then
     echo "###### WARNING: GITHUB_REF_NAME not set - no reset pushed to ${GH_PAGES_BRANCH}!"
