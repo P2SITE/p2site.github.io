@@ -37,6 +37,9 @@ jobs:
           .github/scripts/acme_cleanup_hook.sh
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_PAGES_ACTION: 'jekyll-gh-pages.yml'
           NO_CHALLENGE_TAG: '__no_challenge'
           GH_PAGES_BRANCH:  'gh-pages'
           CERTBOT_IDENTIFIER: 'p2site.github.io'
