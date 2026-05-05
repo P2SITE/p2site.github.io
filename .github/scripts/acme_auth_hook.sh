@@ -60,7 +60,7 @@ echo "GITHUB_REF_NAME:  '${GITHUB_REF_NAME}'"
 if [[ -n $(git status --porcelain) && -n "${GITHUB_REF_NAME}" ]]; then
     git fetch --all
     # TODO - move tagging into main workflow
-    git tag -a "${NO_CHALLENGE_TAG}"
+    git tag "${NO_CHALLENGE_TAG}"
     git add -A
     git commit -am "Add challenge"
     #git push origin "${GITHUB_REF_NAME}"
