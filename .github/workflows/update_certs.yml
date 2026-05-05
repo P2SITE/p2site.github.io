@@ -10,7 +10,9 @@ on:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
+  actions: write
   contents: write
+#permissions: write-all
 
 concurrency:
   group: "certs"
