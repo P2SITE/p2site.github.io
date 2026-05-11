@@ -1,5 +1,17 @@
 name: Cleanup Workflow Runs
 on:
+  # ┌───────────── minute (0 - 59)
+  # │ ┌───────────── hour (0 - 23)
+  # │ │ ┌───────────── day of the month (1 - 31)
+  # │ │ │ ┌───────────── month (1 - 12 or JAN-DEC)
+  # │ │ │ │ ┌───────────── day of the week (0 - 6 or SUN-SAT)
+  # │ │ │ │ │
+  # │ │ │ │ │
+  # │ │ │ │ │
+  # * * * * *
+  schedule:
+    - cron: '35 4 * * *' # run at 4:35 UTC every day
+
   workflow_dispatch:
     inputs:
       #repository:
@@ -52,9 +64,9 @@ on:
           - skipped
           - success
       dry_run:
-        description: 'If not empty logs simulated changes only, no deletions are performed'
+        description: 'If set, then simulate changes only, no deletions are performed'
         required: false
-        type: string
+        type: boolean
 
 jobs:
   del_runs:
@@ -70,7 +82,8 @@ jobs:
     #        || github.event.inputs.repository
     #      }}
     steps:
-      - name: Delete workflow runs
+      - name: Delete workflow runs (manually triggered)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: GHCICD/delete-workflow-runs@vHEAD
         with:
           token: ${{ github.token }}
@@ -86,4 +99,18 @@ jobs:
               && 'action_required,cancelled,failure,skipped'
               || github.event.inputs.delete_run_by_conclusion_pattern
             }}
-          dry_run: ${{ github.event.inputs.dry_run }}
+          dry_run: ${{ github.event.inputs.dry_run == 'true' }}
+
+      - name: Delete workflow runs (triggered by schedule)
+        if: ${{ github.event_name == 'schedule' }}
+        uses: GHCICD/delete-workflow-runs@vHEAD
+        with:
+          token: ${{ github.token }}
+          #repository: ${{ github.repository_owner }}/${{ matrix.repository }}
+          repository: ${{ github.repository }}
+          retain_days: '3'
+          keep_minimum_runs: '0'
+          delete_workflow_pattern: ''
+          delete_workflow_by_state_pattern: 'ALL'
+          delete_run_by_conclusion_pattern: 'ALL'
+          dry_run: ''

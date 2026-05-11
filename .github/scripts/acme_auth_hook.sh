@@ -52,17 +52,15 @@ truncate -s -1 "$CHALLENGE_FILE"
 # ==============================================
 # Commit challenge file and push to pages branch
 #
-#GH_PAGES_BRANCH="gh-pages"
 echo "GH_PAGES_BRANCH:     '${GH_PAGES_BRANCH}'"
-#NO_CHALLENGE_TAG="__no_challenge"
-echo "NO_CHALLENGE_TAG:    '${NO_CHALLENGE_TAG}'"
+echo "RESET_TAG:           '${RESET_TAG}'"
 echo "GITHUB_REF_NAME:     '${GITHUB_REF_NAME}'"
 echo "GITHUB_REPO:         '${GITHUB_REPO}'"
 echo "GITHUB_PAGES_ACTION: '${GITHUB_PAGES_ACTION}'"
 if [[ -n $(git status --porcelain) && -n "${GITHUB_REF_NAME}" ]]; then
     git fetch --all
     # TODO - move tagging into main workflow
-    git tag "${NO_CHALLENGE_TAG}"
+    git tag "${RESET_TAG}"
     git add -A
     git commit -am "Add challenge"
     #git push origin "${GITHUB_REF_NAME}"

@@ -2,11 +2,24 @@ name: Update Certificates
 
 on:
   workflow_dispatch:
+    inputs:
       dry_run:
-        description: 'If not empty logs simulated changes only, no deletions are performed'
+        description: 'If true then run Certbot --test-cert'
         required: false
         default: true
         type: boolean
+
+  # ┌───────────── minute (0 - 59)
+  # │ ┌───────────── hour (0 - 23)
+  # │ │ ┌───────────── day of the month (1 - 31)
+  # │ │ │ ┌───────────── month (1 - 12 or JAN-DEC)
+  # │ │ │ │ ┌───────────── day of the week (0 - 6 or SUN-SAT)
+  # │ │ │ │ │
+  # │ │ │ │ │
+  # │ │ │ │ │
+  # * * * * *
+  schedule:
+    - cron: '14 5 * * *' # run at 5:14 UTC every day
 
 concurrency:
   group: "certs"
@@ -15,15 +28,78 @@ concurrency:
 jobs:
   update_certs:
     name: Update Certs
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{    github.ref == 'refs/heads/master'
+            || github.ref == 'refs/heads/main'
+         }}
     runs-on: ubuntu-latest
     # Sets permissions of the GITHUB_TOKEN to allow pushing and action triggering
     permissions:
       actions: write
       contents: write
     steps:
+      - name: Assert owner repo
+        run: |
+          OWNER_REPO_EXPECTED="${{ github.repository_owner }}.github.io"
+          OWNER_REPO_EXPECTED="${{ github.repository_owner }}/${OWNER_REPO_EXPECTED,,}"
+          if [[ "${OWNER_REPO_EXPECTED}" != "${{ github.repository }}" ]]; then
+            echo "###### ERROR: Not running on the expected repo '${OWNER_REPO_EXPECTED}'."
+            exit 1
+          fi
+
       - name: Checkout
         uses: GHCICD/checkout@vHEAD
+
+      - name: Setup Environment
+        id: env
+        run: |
+          LE_WORK_DIR=".github/tmp/le"
+          echo "LE_WORK_DIR=${LE_WORK_DIR}" >> $GITHUB_OUTPUT
+          mkdir -p "${LE_WORK_DIR}"
+          DATA_DIR=".github/data"
+          mkdir -p "${DATA_DIR}"
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            CERT_STORE_FILE="${DATA_DIR}/cert_store_dryrun.p12"
+            IS_DRYRUN=true
+          else
+            CERT_STORE_FILE="${DATA_DIR}/cert_store.p12"
+            IS_DRYRUN=false
+          fi
+          echo "CERT_STORE_FILE=${CERT_STORE_FILE}" >> $GITHUB_OUTPUT
+          echo "IS_DRYRUN=${IS_DRYRUN}" >> $GITHUB_OUTPUT
+          SCRIPTS_DIR=".github/scripts"
+          AUTH_HOOK_SCRIPT="${SCRIPTS_DIR}/acme_auth_hook.sh"
+          echo "AUTH_HOOK_SCRIPT=${AUTH_HOOK_SCRIPT}" >> $GITHUB_OUTPUT
+          CLEANUP_HOOK_SCRIPT="${SCRIPTS_DIR}/acme_cleanup_hook.sh"
+          echo "CLEANUP_HOOK_SCRIPT=${CLEANUP_HOOK_SCRIPT}" >> $GITHUB_OUTPUT
+          DOMAIN="${{ github.repository_owner }}.github.io"
+          echo "DOMAIN=${DOMAIN,,}" >> $GITHUB_OUTPUT
+          GITHUB_PAGES_ACTION="deploy_pages.yml"
+          echo "GITHUB_PAGES_ACTION=${GITHUB_PAGES_ACTION}" >> $GITHUB_OUTPUT
+          GH_PAGES_BRANCH="gh-pages"
+          echo "GH_PAGES_BRANCH=${GH_PAGES_BRANCH}" >> $GITHUB_OUTPUT
+          RESET_TAG="__reset_tag"
+          echo "RESET_TAG=${RESET_TAG}" >> $GITHUB_OUTPUT
+          #steps.env.outputs.LE_WORK_DIR
+          #steps.env.outputs.CERT_STORE_FILE
+          #steps.env.outputs.IS_DRYRUN
+          #steps.env.outputs.AUTH_HOOK_SCRIPT
+          #steps.env.outputs.CLEANUP_HOOK_SCRIPT
+          #steps.env.outputs.DOMAIN
+          #steps.env.outputs.GITHUB_PAGES_ACTION
+          #steps.env.outputs.GH_PAGES_BRANCH
+          #steps.env.outputs.RESET_TAG
+
+      - name: Log Environment
+        run: |
+          echo "LE_WORK_DIR:         ${{ steps.env.outputs.LE_WORK_DIR }}"
+          echo "CERT_STORE_FILE:     ${{ steps.env.outputs.CERT_STORE_FILE }}"
+          echo "IS_DRYRUN:           ${{ steps.env.outputs.IS_DRYRUN }}"
+          echo "AUTH_HOOK_SCRIPT:    ${{ steps.env.outputs.AUTH_HOOK_SCRIPT }}"
+          echo "CLEANUP_HOOK_SCRIPT: ${{ steps.env.outputs.CLEANUP_HOOK_SCRIPT }}"
+          echo "DOMAIN:              ${{ steps.env.outputs.DOMAIN }}"
+          echo "GITHUB_PAGES_ACTION: ${{ steps.env.outputs.GITHUB_PAGES_ACTION }}"
+          echo "GH_PAGES_BRANCH:     ${{ steps.env.outputs.GH_PAGES_BRANCH }}"
+          echo "RESET_TAG:           ${{ steps.env.outputs.RESET_TAG }}"
 
       - name: Git config
         run: |
@@ -31,18 +107,87 @@ jobs:
           git config user.name "GitHub CICD"
           git config user.email "${{ github.repository_owner }}@users.noreply.github.com"
 
-      - name: DryRun
+      - name: Check Cert Store Age
+        id: age
         run: |
-          .github/scripts/acme_auth_hook.sh
-          .github/scripts/acme_cleanup_hook.sh
+          COMMIT_TS=$(git log -1 master --format="%ct" -- "${CERT_STORE_FILE}")
+          NOW=$(date +%s)
+          AGE_IN_DAYS=$(((NOW - COMMIT_TS) / (86400)))
+          echo "Age of ${CERT_STORE_FILE}: ${AGE_IN_DAYS} days"
+          if [[ "${AGE_IN_DAYS}" -ge 43 ]]; then
+            echo "IS_TO_RENEW=true" >> $GITHUB_OUTPUT
+          else
+            echo "IS_TO_RENEW=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          CERT_STORE_FILE: ${{ steps.env.outputs.CERT_STORE_FILE }}
+
+      - name: Run Certbot
+        id: certbot
+        if: ${{    steps.env.outputs.IS_DRYRUN == 'true'
+                || steps.age.outputs.IS_TO_RENEW == 'true'
+             }}
+        run: |
+          # Step 1: Install Certbot with snapd:
+          sudo snap install --classic certbot
+          # Step 2: Create a symlink to ensure Certbot runs:
+          sudo ln -s /snap/bin/certbot /usr/bin/certbot
+          DRY_RUN=''
+          if [[ "${{ steps.env.outputs.IS_DRYRUN }}" == "true" ]]; then
+            DRY_RUN="--test-cert"
+          fi
+          echo "Certbot version: $(certbot --version)"
+          certbot certonly -d ${DOMAIN} ${DRY_RUN} \
+            --agree-tos \
+            --manual \
+            --preferred-challenges=http \
+            --manual-auth-hook ${AUTH_HOOK_SCRIPT} \
+            --manual-cleanup-hook ${CLEANUP_HOOK_SCRIPT} \
+            --non-interactive \
+            --config-dir ${LE_WORK_DIR} \
+            --work-dir ${LE_WORK_DIR} \
+            --logs-dir ${LE_WORK_DIR}
+          echo "LE files created:"
+          find "${LE_WORK_DIR}" -type f | sort
+          echo "Exporting certificates to ${CERT_STORE_FILE} ..."
+          openssl pkcs12 -export \
+            -inkey "${LE_WORK_DIR}/live/${DOMAIN}/privkey.pem" \
+            -in "${LE_WORK_DIR}/live/${DOMAIN}/fullchain.pem" \
+            -name code-signing \
+            -password env:PKCS12_PASSPHRASE \
+            -out "${CERT_STORE_FILE}"
+          echo "Export of certificates to ${CERT_STORE_FILE} done."
+          echo "SUCCESS=true" >> $GITHUB_OUTPUT
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
-          GITHUB_PAGES_ACTION: 'jekyll-gh-pages.yml'
-          NO_CHALLENGE_TAG: '__no_challenge'
-          GH_PAGES_BRANCH:  'gh-pages'
-          CERTBOT_IDENTIFIER: 'p2site.github.io'
-          CERTBOT_VALIDATION: 'YjCxR470Ie3JebPwgJ0lAUfGHGdgK804CtzBlReN3Tc.u8R966Ia_uEr-VLUfEMtvqAqAOwAdKMwHnqTKxR_hu4'
-          CERTBOT_TOKEN:      'YjCxR470Ie3JebPwgJ0lAUfGHGdgK804CtzBlReN3Tc'
-          CHALLENGE_FILE:     'challenge'
+          GITHUB_PAGES_ACTION: ${{ steps.env.outputs.GITHUB_PAGES_ACTION }}
+          GH_PAGES_BRANCH: ${{ steps.env.outputs.GH_PAGES_BRANCH }}
+          RESET_TAG: ${{ steps.env.outputs.RESET_TAG }}
+          CHALLENGE_FILE: 'challenge'
+          LE_WORK_DIR: ${{ steps.env.outputs.LE_WORK_DIR }}
+          CERT_STORE_FILE: ${{ steps.env.outputs.CERT_STORE_FILE }}
+          AUTH_HOOK_SCRIPT: ${{ steps.env.outputs.AUTH_HOOK_SCRIPT }}
+          CLEANUP_HOOK_SCRIPT: ${{ steps.env.outputs.CLEANUP_HOOK_SCRIPT }}
+          DOMAIN: ${{ steps.env.outputs.DOMAIN }}
+          PKCS12_PASSPHRASE: ${{ secrets.PKCS12_PASSPHRASE }}
+
+      - name: Commit Certstore
+        if: ${{ steps.certbot.outputs.SUCCESS == 'true' }}
+        run: |
+          if [[ -n $(git status --porcelain) && -n "${GITHUB_REF_NAME}" ]]; then
+            git fetch --all
+            git add -A
+            git commit -am "Update certificates"
+            git push origin "${GITHUB_REF_NAME}"
+            #git push --force-with-lease origin "${GITHUB_REF_NAME}":"${GITHUB_REF_NAME}"
+            echo "Pushed to ${GITHUB_REF_NAME}."
+          elif [[ -z "${GITHUB_REF_NAME}" ]]; then
+            echo "###### WARNING: GITHUB_REF_NAME not set - no change commited!"
+          else
+            echo "###### WARNING: Nothing changed - nothing commited!"
+          fi
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
