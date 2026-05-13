@@ -10,7 +10,8 @@ on:
   # │ │ │ │ │
   # * * * * *
   schedule:
-    - cron: '35 4 * * *' # run at 4:35 UTC every day
+    - cron: '35 4 * * *' # run at 4:35 every day in timezone below
+      timezone: 'Europe/Brussels'
 
   workflow_dispatch:
     inputs:

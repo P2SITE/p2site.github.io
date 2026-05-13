@@ -19,7 +19,8 @@ on:
   # │ │ │ │ │
   # * * * * *
   schedule:
-    - cron: '14 5 * * *' # run at 5:14 UTC every day
+    - cron: '14 5 * * *' # run at 5:14 every day in timezone below
+      timezone: 'Europe/Brussels'
 
 concurrency:
   group: "certs"
@@ -149,6 +150,8 @@ jobs:
             --logs-dir ${LE_WORK_DIR}
           echo "LE files created:"
           find "${LE_WORK_DIR}" -type f | sort
+          echo "LE symlinks created:"
+          find "${LE_WORK_DIR}" -type l | sort
           echo "Exporting certificates to ${CERT_STORE_FILE} ..."
           openssl pkcs12 -export \
             -inkey "${LE_WORK_DIR}/live/${DOMAIN}/privkey.pem" \
@@ -177,9 +180,14 @@ jobs:
         if: ${{ steps.certbot.outputs.SUCCESS == 'true' }}
         run: |
           if [[ -n $(git status --porcelain) && -n "${GITHUB_REF_NAME}" ]]; then
+            if [[ "${{ steps.env.outputs.IS_DRYRUN }}" == "true" ]]; then
+              COMMIT_MESSAGE="Update dryrun certificates"
+            else
+              COMMIT_MESSAGE="Update certificates"
+            fi
             git fetch --all
             git add -A
-            git commit -am "Update certificates"
+            git commit -am "${COMMIT_MESSAGE}"
             git push origin "${GITHUB_REF_NAME}"
             #git push --force-with-lease origin "${GITHUB_REF_NAME}":"${GITHUB_REF_NAME}"
             echo "Pushed to ${GITHUB_REF_NAME}."
